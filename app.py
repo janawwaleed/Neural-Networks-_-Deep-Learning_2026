@@ -7,6 +7,10 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
+from adaline import test_adaline, train_adaline
+from preprocessing import load_data, split_data
+from SLP import Perceptron
+
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
@@ -31,54 +35,64 @@ CLASS_LIGHT = ("#F7C9C8", "#BCD6EA")
 
 
 # --------------------------------------------------------------------------
-# REPLACE ME: connect these two functions to your own logic
+# Glue: connects the GUI to preprocessing.py, SLP.py and adaline.py
 # --------------------------------------------------------------------------
-def train_and_evaluate(algo: str, cfg: dict) -> dict:
-    """
-    Placeholder. Replace with your real training + testing code.
+@st.cache_data
+def _load_df():
+    return load_data()
 
-    `algo` is "perceptron" or "adaline".
-    `cfg` has: feature_1, feature_2, class_1, class_2, eta, epochs,
-               mse_threshold, use_bias.
 
-    Must return a dict with:
-        x_train, y_train : (n, 2) array / (n,) array of -1/+1 labels
-        x_test,  y_test  : same for the test set
-        w1, w2, b        : final weights/bias IN ORIGINAL FEATURE UNITS (for the line)
-        confusion        : 2x2 numpy array (rows = true, cols = predicted)
-        accuracy         : float in [0, 1]
-        model            : anything you need later for classify_sample()
-    (history is optional now, since the error plot and its cards were removed)
-    """
-    rng = np.random.default_rng(0)
-    a = rng.normal([38, 18], [2.5, 1.0], size=(50, 2))
-    c = rng.normal([48, 15], [2.5, 1.0], size=(50, 2))
-    x = np.vstack([a[:30], c[:30]])
-    y = np.array([-1] * 30 + [1] * 30)
-    xt = np.vstack([a[30:], c[30:]])
-    yt = np.array([-1] * 20 + [1] * 20)
-
-    w1, w2, b = 0.5, -1.2, -2.0  # fake line
-    pred = np.where(xt @ np.array([w1, w2]) + b >= 0, 1, -1)
-
+def _confusion(y_true, y_pred):
+    """2x2 matrix, rows = true class, cols = predicted (index 0 = label -1, 1 = label +1)."""
     conf = np.zeros((2, 2), dtype=int)
-    for t, p in zip(yt, pred):
+    for t, p in zip(y_true, y_pred):
         conf[0 if t == -1 else 1, 0 if p == -1 else 1] += 1
+    return conf
 
-    history = list(np.linspace(1.0, 0.1, cfg["epochs"]) + rng.normal(0, 0.02, cfg["epochs"]))
+
+def train_and_evaluate(algo: str, cfg: dict) -> dict:
+    df = _load_df()
+    X_tr, y_tr, X_te, y_te, mean, std = split_data(
+        df, cfg["class_1"], cfg["class_2"], cfg["feature_1"], cfg["feature_2"], return_stats=True)
+
+    # preprocessing labels class 1 as +1, but the GUI treats class 1 as -1 -> flip
+    y_tr, y_te = -y_tr, -y_te
+
+    if algo == "perceptron":
+        model = Perceptron(cfg["eta"], cfg["epochs"], cfg["use_bias"])
+        model.train(X_tr, y_tr)
+        conf, acc = model.test(X_te, y_te)
+        if cfg["use_bias"]:                      # w = [w0, w1, w2]
+            b_z, w_z = model.w[0], model.w[1:]
+        else:                                    # w = [w1, w2]
+            b_z, w_z = 0.0, model.w
+        history = []
+    else:
+        w_z, b_z, history = train_adaline(
+            X_tr, y_tr, cfg["eta"], cfg["epochs"], cfg["mse_threshold"], cfg["use_bias"])
+        model = None
+        conf = _confusion(y_te, test_adaline(X_te, w_z, b_z))
+        acc = conf.trace() / conf.sum()
+
+    # weights were learned on standardized features z = (x - mean) / std.
+    # Convert to original units so the line is drawn correctly:
+    w1 = w_z[0] / std[0]
+    w2 = w_z[1] / std[1]
+    b = b_z - w_z[0] * mean[0] / std[0] - w_z[1] * mean[1] / std[1]
+
     return {
-        "x_train": x, "y_train": y, "x_test": xt, "y_test": yt,
-        "w1": w1, "w2": w2, "b": b,
-        "history": history,
-        "confusion": conf,
-        "accuracy": float(np.trace(conf) / conf.sum()),
-        "model": None,
+        "x_train": X_tr * std + mean, "y_train": y_tr,     # back to original units for the plot
+        "x_test": X_te * std + mean, "y_test": y_te,
+        "w1": float(w1), "w2": float(w2), "b": float(b),
+        "history": list(history),
+        "confusion": np.asarray(conf),
+        "accuracy": float(acc),
+        "model": model,
     }
 
 
 def classify_sample(result: dict, cfg: dict, v1: float, v2: float) -> str:
-    """Placeholder. Replace with your real single-sample classification.
-    Must return the predicted class NAME (cfg['class_1'] or cfg['class_2'])."""
+    """Uses the weights in original feature units, so v1 and v2 are typed as-is."""
     score = result["w1"] * v1 + result["w2"] * v2 + result["b"]
     return cfg["class_2"] if score >= 0 else cfg["class_1"]
 

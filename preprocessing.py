@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import numpy as np
@@ -46,7 +45,7 @@ def get_class_block(df, cls):
     return df.iloc[start:start + SAMPLES_PER_CLASS]
 
 
-def split_data(df, class1, class2, feature1, feature2, seed=None):
+def split_data(df, class1, class2, feature1, feature2, seed=None, return_stats=False):
     cols = [feature1, feature2]
 
     # Each class is a block of 50 rows in the CSV -> slice that block out
@@ -69,7 +68,12 @@ def split_data(df, class1, class2, feature1, feature2, seed=None):
     order = np.random.default_rng(seed).permutation(len(X_train))
     X_train, y_train = X_train[order], y_train[order]
 
+    mean = X_train.mean(axis=0)   # kept so the GUI can convert weights back to original units
+    std = X_train.std(axis=0)
+    std[std == 0] = 1
     X_train, X_test = standardize(X_train, X_test)
+    if return_stats:
+        return X_train, y_train, X_test, y_test, mean, std
     return X_train, y_train, X_test, y_test
 
 
