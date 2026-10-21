@@ -6,7 +6,6 @@ import streamlit as st
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from matplotlib.ticker import MaxNLocator
 
 # --------------------------------------------------------------------------
 # Constants
@@ -46,10 +45,10 @@ def train_and_evaluate(algo: str, cfg: dict) -> dict:
         x_train, y_train : (n, 2) array / (n,) array of -1/+1 labels
         x_test,  y_test  : same for the test set
         w1, w2, b        : final weights/bias IN ORIGINAL FEATURE UNITS (for the line)
-        history          : list of per-epoch values (errors for perceptron, MSE for adaline)
         confusion        : 2x2 numpy array (rows = true, cols = predicted)
         accuracy         : float in [0, 1]
         model            : anything you need later for classify_sample()
+    (history is optional now, since the error plot and its cards were removed)
     """
     rng = np.random.default_rng(0)
     a = rng.normal([38, 18], [2.5, 1.0], size=(50, 2))
@@ -126,7 +125,7 @@ CSS = """
 .stApp{background:linear-gradient(180deg,#FFF7F6 0%,#FBEEF3 100%);}
 #MainMenu,footer,.stDeployButton,[data-testid="stAppDeployButton"]{visibility:hidden;display:none;}
 header[data-testid="stHeader"]{background:transparent;}
-.block-container{padding-top:2.2rem;max-width:1180px;}
+.block-container{padding-top:2.2rem;max-width:1400px;}
 .stApp h1,.stApp h2,.stApp h3,.stApp label,.stApp [data-testid="stWidgetLabel"] p{color:var(--ink) !important;}
 
 /* ---------- sidebar ---------- */
@@ -177,7 +176,7 @@ background:linear-gradient(120deg,#E07B7B,#F7AAA2);color:#fff;font-weight:800;ma
 /* ---------- results ---------- */
 .badge{display:inline-block;padding:5px 14px;border-radius:999px;font-weight:700;font-size:13px;color:#fff;
 background:linear-gradient(90deg,var(--a1),var(--a2));}
-.metric-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:6px 0 16px 0;}
+.metric-row{display:grid;grid-template-columns:1fr;gap:14px;margin:0 0 16px 0;}
 .metric{background:#fff;border-radius:16px;padding:14px 18px;border:1px solid #F4E4E4;border-left:6px solid var(--a1);
 box-shadow:0 8px 22px -14px rgba(43,45,66,.35);}
 .m-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
@@ -201,7 +200,7 @@ div.stButton > button[kind="primary"]:hover,div.stButton > button[data-testid="s
 .st-key-open_perc div.stButton > button p,.st-key-open_ada div.stButton > button p{color:#fff !important;}
 [data-baseweb="select"] > div,[data-baseweb="input"] > div,[data-baseweb="base-input"]{border-radius:10px !important;}
 [data-testid="stVerticalBlockBorderWrapper"]{border-radius:18px;background:#fff;border-color:#F4E4E4;box-shadow:0 8px 22px -16px rgba(43,45,66,.35);}
-@media (max-width:800px){.metric-row,.steps{grid-template-columns:1fr 1fr;}.hero-title{font-size:30px;}}
+@media (max-width:800px){.steps{grid-template-columns:1fr 1fr;}.hero-title{font-size:30px;}}
 </style>
 """
 
@@ -295,7 +294,7 @@ def _style_axes(ax):
 
 
 def draw_boundary(result: dict, cfg: dict) -> Figure:
-    fig = Figure(figsize=(6, 4.6))
+    fig = Figure(figsize=(6, 5.6))
     ax = fig.subplots()
     _style_axes(ax)
 
@@ -337,27 +336,9 @@ def draw_boundary(result: dict, cfg: dict) -> Figure:
     return fig
 
 
-def draw_history(result: dict, algo: str, cfg: dict, color: str) -> Figure:
-    fig = Figure(figsize=(6, 4.6))
-    ax = fig.subplots()
-    _style_axes(ax)
-    h = np.asarray(result["history"], dtype=float)
-    epochs = np.arange(1, len(h) + 1)
-    ax.plot(epochs, h, color=color, linewidth=2.4)
-    ax.fill_between(epochs, h, h.min(), color=color, alpha=0.14)
-    if algo == "adaline" and cfg.get("mse_threshold") is not None:
-        ax.axhline(cfg["mse_threshold"], color=INK, linestyle="--", linewidth=1.2, label="MSE threshold")
-        ax.legend(fontsize=8)
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.set_xlabel("Epoch", fontsize=10)
-    ax.set_ylabel("MSE" if algo == "adaline" else "Misclassified samples", fontsize=10)
-    fig.tight_layout()
-    return fig
-
-
 def draw_confusion(result: dict, cfg: dict, color: str) -> Figure:
     conf = np.asarray(result["confusion"])
-    fig = Figure(figsize=(6, 3.4))
+    fig = Figure(figsize=(6, 5.6))
     ax = fig.subplots()
     cmap = LinearSegmentedColormap.from_list("acc", ["#FFFFFF", color])
     ax.imshow(conf, cmap=cmap, vmin=0, vmax=max(conf.max(), 1), aspect="auto")
@@ -383,29 +364,13 @@ def draw_confusion(result: dict, cfg: dict, color: str) -> Figure:
 
 def render_results(algo: str, result: dict, cfg: dict):
     accent = ACCENTS[algo][0]
-    hist = result["history"]
-    final = f"{hist[-1]:.4f}" if algo == "adaline" else f"{hist[-1]:.0f}"
 
-    metric_cards([
-        ("Test accuracy", f"{result['accuracy'] * 100:.2f}%", f"{cfg['class_1']} vs {cfg['class_2']}"),
-        ("Train / Test", f"{len(result['x_train'])} / {len(result['x_test'])}", "samples"),
-        ("Epochs run", f"{len(hist)}", f"of {cfg['epochs']} max"),
-        ("Final MSE" if algo == "adaline" else "Final errors", final, "last epoch"),
-    ])
-
-    left, right = st.columns(2)
-    with left, st.container(border=True):
-        html('<div class="panel-title">Decision boundary</div>')
-        st.pyplot(draw_boundary(result, cfg))
-    with right, st.container(border=True):
-        html(f'<div class="panel-title">{"MSE" if algo == "adaline" else "Errors"} per epoch</div>')
-        st.pyplot(draw_history(result, algo, cfg, accent))
-
-    left, right = st.columns(2)
-    with left, st.container(border=True):
-        html('<div class="panel-title">Confusion matrix (test set)</div>')
-        st.pyplot(draw_confusion(result, cfg, accent))
-    with right, st.container(border=True):
+    top_left, top_right = st.columns([1, 2], gap="medium")
+    with top_left:
+        metric_cards([
+            ("Test accuracy", f"{result['accuracy'] * 100:.2f}%", f"{cfg['class_1']} vs {cfg['class_2']}"),
+        ])
+    with top_right, st.container(border=True):
         html('<div class="panel-title">Classify a single sample</div>')
         st.caption("Enter the two feature values (in original units) and press Classify.")
         s1, s2 = st.columns(2)
@@ -415,6 +380,14 @@ def render_results(algo: str, result: dict, cfg: dict):
             name = classify_sample(result, cfg, v1, v2)
             color = CLASS_COLORS[0] if name == cfg["class_1"] else CLASS_COLORS[1]
             html(f'<div class="pred-pill" style="background:{color};">Predicted class: <b>{name}</b></div>')
+
+    left, right = st.columns(2)
+    with left, st.container(border=True):
+        html('<div class="panel-title">Decision boundary</div>')
+        st.pyplot(draw_boundary(result, cfg))
+    with right, st.container(border=True):
+        html('<div class="panel-title">Confusion matrix (test set)</div>')
+        st.pyplot(draw_confusion(result, cfg, accent))
 
 
 # --------------------------------------------------------------------------
