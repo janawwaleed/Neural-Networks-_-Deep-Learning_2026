@@ -48,11 +48,11 @@ def get_class_block(df, cls):
 def split_data(df, class1, class2, feature1, feature2, seed=None, return_stats=False):
     cols = [feature1, feature2]
 
-    # Each class is a block of 50 rows in the CSV -> slice that block out
+    # slice each class(50 rows)
     c1 = get_class_block(df, class1)
     c2 = get_class_block(df, class2)
 
-    # Shuffle inside the block, then slice: first 30 -> train, next 20 -> test
+    # shuffle each class then split 30 train 20 test
     c1 = c1.sample(frac=1, random_state=seed)
     c2 = c2.sample(frac=1, random_state=seed)
 
@@ -64,29 +64,22 @@ def split_data(df, class1, class2, feature1, feature2, seed=None, return_stats=F
     y_train = np.concatenate([np.ones(TRAIN_PER_CLASS), -np.ones(TRAIN_PER_CLASS)])
     y_test = np.concatenate([np.ones(TEST_PER_CLASS), -np.ones(TEST_PER_CLASS)])
 
-    # Shuffle the training set so the model doesn't see all of class 1 then all of class 2
+    # shuffle training data so that each class is learnt equally
     order = np.random.default_rng(seed).permutation(len(X_train))
     X_train, y_train = X_train[order], y_train[order]
 
-    mean = X_train.mean(axis=0)   # kept so the GUI can convert weights back to original units
+    mean = X_train.mean(axis=0)       # kept so the GUI can convert weights back to original units
     std = X_train.std(axis=0)
-    std[std == 0] = 1
-    X_train, X_test = standardize(X_train, X_test)
+    std[std == 0] = 1                 # avoid dividing by zero if a feature is constant
+    X_train = (X_train - mean) / std  # z-score scaling
+    X_test = (X_test - mean) / std    # test set uses the TRAINING mean and std
     if return_stats:
         return X_train, y_train, X_test, y_test, mean, std
     return X_train, y_train, X_test, y_test
 
 
-def standardize(X_train, X_test):
-    """Z-score scaling: (x - mean) / std, using training stats for both sets."""
-    mean = X_train.mean(axis=0)
-    std = X_train.std(axis=0)
-    std[std == 0] = 1  # avoid dividing by zero if a feature is constant
-    return (X_train - mean) / std, (X_test - mean) / std
-
 
 if __name__ == "__main__":
-    # Quick check: run "python data.py"
     df = load_data()
     print("Rows:", len(df), "| Missing values left:", df.isna().sum().sum())
     print(df.groupby("Species").size())
