@@ -42,13 +42,6 @@ def _load_df():
     return load_data()
 
 
-def _confusion(y_true, y_pred):
-    """2x2 matrix, rows = true class, cols = predicted (index 0 = label -1, 1 = label +1)."""
-    conf = np.zeros((2, 2), dtype=int)
-    for t, p in zip(y_true, y_pred):
-        conf[0 if t == -1 else 1, 0 if p == -1 else 1] += 1
-    return conf
-
 
 def train_and_evaluate(algo: str, cfg: dict) -> dict:
     df = _load_df()
@@ -71,8 +64,7 @@ def train_and_evaluate(algo: str, cfg: dict) -> dict:
         w_z, b_z, history = train_adaline(
             X_tr, y_tr, cfg["eta"], cfg["epochs"], cfg["mse_threshold"], cfg["use_bias"])
         model = None
-        conf = _confusion(y_te, test_adaline(X_te, w_z, b_z))
-        acc = conf.trace() / conf.sum()
+        _, conf, acc = test_adaline(X_te, y_te, w_z, b_z)
 
     # weights were learned on standardized features z = (x - mean) / std.
     # Convert to original units so the line is drawn correctly:

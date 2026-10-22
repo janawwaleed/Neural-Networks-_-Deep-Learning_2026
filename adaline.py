@@ -34,16 +34,31 @@ def train_adaline(X, Label, LR, epochs, mse_threshold, bias):
  
     return w, b, mse_history
 
-def test_adaline(X, w, b):
+def test_adaline(X, t, w, b):
     outputs = []
-    for x in X:
-        v = np.dot(w, x) + b     
- 
-        # SIGNUM activation
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
+    for x, ti in zip(X, t):
+        v = np.dot(w, x) + b
         if v >= 0:
             y = 1
         else:
             y = -1
- 
-        outputs.append(y)        
-    return np.array(outputs)
+
+        if y == ti and y == 1:
+            tp += 1
+        elif y == ti and y == -1:
+            tn += 1
+        elif y != ti and y == 1:
+            fp += 1
+        else:
+            fn += 1
+        outputs.append(y)
+
+    total = tp + tn + fp + fn
+    accuracy = (tp + tn) / total
+    conf = np.array([[tn, fp],
+                     [fn, tp]])
+    return np.array(outputs), conf, accuracy
